@@ -1,0 +1,18 @@
+# B站账号配置
+bilibili:
+  # 账号列表，支持多账号
+  accounts: []
+  # 浏览器 User-Agent
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+
+# UP主监控配置
+monitor:
+  mid: ""  # UP主ID
+  interval: 10  # 检查间隔(秒)
+  max_retries: 3  # 失败重试次数
+  retry_delay: 5  # 重试延迟(秒)
+
+# 弹幕发送配置
+danmaku:
+  max_count_per_hour: 500  # 每小时最多弹幕数量
+  send_interval: 6  # 发送间隔(秒) 
