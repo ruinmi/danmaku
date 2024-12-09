@@ -170,6 +170,8 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
 def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
     """自动发送XML文件中的弹幕"""
     
+    start_time = time.time()  # 记录开始时间
+    
     # 读取XML文件
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -195,6 +197,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
     rate_limit_wait = config.danmaku['send_interval']  # 初始等待时间
     accounts = config.bilibili['accounts']
     batch_size = 2  # 每批账号数量
+    success_streak = 0  # 连续成功的批次数
     
     # 将账号分批
     account_batches = [accounts[i:i+batch_size] for i in range(0, len(accounts), batch_size)]
@@ -232,18 +235,34 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
                     rate_limited = True
                     break
         
-        # 如果当前批次的账号都被限制，切换到下一批
+        # 处理频率限制情况
         if rate_limited:
             if len(account_batches) == 1:
-                # 只有一个批次时，增加等待时间
+                # 只有一个批次时，直接增加等待时间
                 rate_limit_wait = min(int(rate_limit_wait * 2), 60)  # 最大等待时间60秒
-                logger.warning(f"只有一个批次且被限制，等待时间增加到 {rate_limit_wait} 秒")
+                logger.warning(f"只有一个批次且遇到频率限制，等待时间增加到 {rate_limit_wait} 秒")
             else:
-                # 多个批次时，切换到下一批
+                # 多个批次时，先检查成功次数
+                if success_streak < 5:
+                    logger.warning(f"成功次数过少({success_streak}次)，歇一下 60 秒")
+                    time.sleep(60)
+                # 切换到下一批账号
                 current_batch = (current_batch + 1) % len(account_batches)
                 logger.info(f"切换到第 {current_batch + 1} 批账号")
+            success_streak = 0  # 重置连续成功计数
+        else:
+            success_streak += 1
+            rate_limit_wait = max(int(rate_limit_wait * 0.8), config.danmaku['send_interval'])
         
         time.sleep(rate_limit_wait)
+    
+    # 计算并打印总耗时
+    total_time = time.time() - start_time
+    hours = int(total_time // 3600)
+    minutes = int((total_time % 3600) // 60)
+    seconds = int(total_time % 60)
+    
+    logger.info(f"弹幕发送完成，总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}")
 
 def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) -> str:
     """
