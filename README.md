@@ -24,9 +24,13 @@
 
 ## 🚀 快速开始
 
-1. 修改 `config/config.yaml`,配置需要监控的 UP 主 ID
-2. 执行 `login.sh` 添加弹幕发送账号
-3. 运行 `start.sh` 启动监控服务
+1. 给脚本添加执行权限 
+    ```bash
+    chmod +x start.sh login.sh add_pending_record.sh
+    ```
+2. 修改 `config/config.yaml`,配置需要监控的 UP 主 ID
+3. 执行 `.\login.sh` 添加弹幕发送账号
+4. 运行 `.\start.sh` 启动监控服务
 
 ## ⚠️ 使用须知
 
@@ -36,4 +40,4 @@
         - `mv {文件} {本项目}/danmaku/`
         - `rm {本项目}/danmaku/*.mp4`
     - **下载后处理**:
-        - `python3 /biliup/danmaku/add_pending.py`
+        - `{本项目}/add_pending_record.sh`
