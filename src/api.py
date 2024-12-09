@@ -198,6 +198,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
     accounts = config.bilibili['accounts']
     batch_size = 2  # 每批账号数量
     success_streak = 0  # 连续成功的批次数
+    danmaku_count = 0
     
     # 将账号分批
     account_batches = [accounts[i:i+batch_size] for i in range(0, len(accounts), batch_size)]
@@ -223,10 +224,10 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
                 sessdata=current_account['sessdata']
             )
             
-            logger.info(f"({current_batch+1}/{len(account_batches)}) {current_account['uname']:<16}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(timestamp))}) {content}")
+            danmaku_count += 1
+            logger.info(f"({danmaku_count}/{len(filtered_danmaku)}) {current_account['uname']:<16}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(timestamp))}) {content}")
             
             if not success:
-                logger.warning(f"状态: 失败, 消息: {message}")
                 if message in ["账号未登录", "csrf校验失败"]:
                     # 如果是cookie失效，跳过这个账号
                     continue
@@ -234,13 +235,15 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
                 if "发送频率过快" in message:
                     rate_limited = True
                     break
+                else:
+                    logger.warning(f"状态: 失败, 消息: {message}")  
         
         # 处理频率限制情况
         if rate_limited:
             if len(account_batches) == 1:
                 # 只有一个批次时，直接增加等待时间
                 rate_limit_wait = min(int(rate_limit_wait * 2), 60)  # 最大等待时间60秒
-                logger.warning(f"只有一个批次且遇到频率限制，等待时间增加到 {rate_limit_wait} 秒")
+                logger.warning(f"频率限制，等待时间增加到 {rate_limit_wait} 秒")
             else:
                 # 多个批次时，先检查成功次数
                 if success_streak < 5:
