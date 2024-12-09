@@ -8,7 +8,7 @@ import os
 class VideoMonitor:
     def __init__(self, config: Dict):
         self.config = config
-        self.storage = Storage(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", 'pending.json'))
+        self.storage = Storage(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", 'pending_records.json'))
         
     def check_pending_videos(self):
         pending_list = self.storage.load()

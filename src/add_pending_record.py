@@ -3,15 +3,15 @@ from storage import Storage
 from logger import logger
 import os
 
-def add_pending_video(title_keyword: str, after_timestamp: int = None):
+def add_pending_record(title_keyword: str, after_timestamp: int = None):
     """
-    添加待处理视频
+    添加待处理录播
     
     参数:
         title_keyword: 视频标题关键词
         after_timestamp: 起始时间戳，默认为当前时间
     """
-    storage = Storage(os.path.join(os.path.dirname(__file__), "config", 'pending.json'))
+    storage = Storage(os.path.join(os.path.dirname(__file__), "config", 'pending_records.json'))
     pending_list = storage.load()
     
     # 如果没有提供时间戳，使用当前时间
@@ -45,7 +45,7 @@ def main():
     room_title = data['room_title']
         
     # 添加到待处理列表
-    add_pending_video(room_title, int(time.time()))
+    add_pending_record(room_title, int(time.time()))
 
 if __name__ == "__main__":
     main() 
