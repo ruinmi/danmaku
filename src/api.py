@@ -211,10 +211,8 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
         
         # 并行发送当前批次的弹幕
         for j, (timestamp, content) in enumerate(batch_danmaku):
-            if j >= len(current_accounts):
-                break
-                
-            current_account = current_accounts[j]
+            account_index = j % len(current_accounts)
+            current_account = current_accounts[account_index]
             success, message, result = send_danmaku(
                 oid=video_cid,
                 bvid=bvid,
@@ -224,8 +222,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
                 sessdata=current_account['sessdata']
             )
             
-            danmaku_count += 1
-            logger.info(f"({danmaku_count}/{len(filtered_danmaku)}) {current_account['uname']:<16}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(timestamp))}) {content}")
+            logger.info(f"({danmaku_count+j+1}/{len(filtered_danmaku)}) {current_account['uname']:<16}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(timestamp))}) {content}")
             
             if not success:
                 if message in ["账号未登录", "csrf校验失败"]:
@@ -237,6 +234,8 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
                     break
                 else:
                     logger.warning(f"状态: 失败, 消息: {message}")  
+        
+        danmaku_count += len(batch_danmaku)
         
         # 处理频率限制情况
         if rate_limited:
