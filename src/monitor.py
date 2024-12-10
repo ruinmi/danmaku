@@ -12,11 +12,15 @@ class VideoMonitor:
         config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
         os.makedirs(config_dir, exist_ok=True)
         
-        self.storage = Storage(os.path.join(config_dir, 'pending_records.json'))        
+        self.storage = Storage(os.path.join(config_dir, 'pending_records.json'))
+        
     def check_pending_videos(self):
+        # 读取当前的待处理列表
         pending_list = self.storage.load()
         if not pending_list:
             return
+            
+        processed_videos = []  # 记录已处理的视频
             
         for video in pending_list[:]:  # 使用切片创建副本以便修改
             try:
@@ -48,14 +52,26 @@ class VideoMonitor:
                     # 发送完成后删除XML文件
                     os.remove(xml_file)
                     logger.info(f"已删除XML文件: {xml_file}")
-                # 处理完成后从列表中移除
-                pending_list.remove(video)
+                    
+                # 记录已处理的视频
+                processed_videos.append(video)
                 logger.info(f"视频 {video['title_keyword']} 处理完成")
                 
             except Exception as e:
                 logger.error(f"处理视频失败: {str(e)}")
-                
-        self.storage.save(pending_list)
+        
+        if processed_videos:
+            # 重新读取最新的待处理列表
+            current_pending_list = self.storage.load()
+            # 从最新列表中移除已处理的视频
+            for video in processed_videos:
+                for pending_video in current_pending_list[:]:
+                    if (pending_video['title_keyword'] == video['title_keyword'] and 
+                        pending_video['after_timestamp'] == video['after_timestamp']):
+                        current_pending_list.remove(pending_video)
+            
+            # 保存更新后的列表
+            self.storage.save(current_pending_list)
     
     def monitor(self):
         logger.info("开始监控")
