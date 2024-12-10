@@ -11,9 +11,13 @@ def add_pending_record(title_keyword: str, after_timestamp: int = None):
         title_keyword: 视频标题关键词
         after_timestamp: 起始时间戳，默认为当前时间
     """
-    storage = Storage(os.path.join(os.path.dirname(__file__), "config", 'pending_records.json'))
+    # 使用项目根目录下的config路径
+    config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
+    os.makedirs(config_dir, exist_ok=True)
+
+    storage = Storage(os.path.join(config_dir, 'pending_records.json'))
     pending_list = storage.load()
-    
+
     # 如果没有提供时间戳，使用当前时间
     if after_timestamp is None:
         after_timestamp = int(time.time())
