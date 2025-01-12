@@ -126,6 +126,9 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     
     # 计算实际每小时最大弹幕数
     max_count = int(max_count_per_hour * video_duration)
+
+    if max_count == 0:
+        return []
     
     # 去重
     seen_contents = set()

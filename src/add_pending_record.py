@@ -46,7 +46,12 @@ def main():
     # 从标准输入读取JSON数据
     data = json.load(sys.stdin)
     
-    room_title = data['room_title']
+    room_title = data.get('room_title', '').strip()
+    
+    # 检查room_title是否为空
+    if not room_title:
+        logger.error("房间标题为空，无法添加待处理记录")
+        sys.exit(1)
         
     # 添加到待处理列表
     add_pending_record(room_title, int(time.time()))
