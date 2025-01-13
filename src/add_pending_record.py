@@ -22,11 +22,13 @@ def add_pending_record(title_keyword: str, after_timestamp: int = None):
     if after_timestamp is None:
         after_timestamp = int(time.time())
     
-    # 检查是否已存在相同的记录
-    for video in pending_list:
-        if video['title_keyword'] == title_keyword:
-            logger.warning(f"已存在相同标题关键词的记录: {title_keyword}")
-            return False
+        # 检查是否已存在相同的记录
+        for video in pending_list:
+            if video['title_keyword'] == title_keyword:
+                logger.warning(f"已存在相同标题关键词的记录: {title_keyword}")
+                return False
+    else:
+        after_timestamp = int(after_timestamp)
     
     # 添加新记录
     pending_list.append({
@@ -47,6 +49,7 @@ def main():
     data = json.load(sys.stdin)
     
     room_title = data.get('room_title', '').strip()
+    after_timestamp = data.get('end_time', 0)
     
     # 检查room_title是否为空
     if not room_title:
@@ -54,7 +57,7 @@ def main():
         sys.exit(1)
         
     # 添加到待处理列表
-    add_pending_record(room_title, int(time.time()))
+    add_pending_record(room_title, after_timestamp)
 
 if __name__ == "__main__":
     main() 
