@@ -1,6 +1,6 @@
 from typing import Dict
 import time
-from logger import logger
+from logger import logger, clear_log
 from storage import Storage
 from api import get_video_parts, auto_send_danmaku, check_up_latest_video
 import os
@@ -77,6 +77,7 @@ class VideoMonitor:
         logger.info("开始监控")
         while True:
             try:
+                clear_log(logger)
                 self.check_pending_videos()
                 time.sleep(self.config['interval'])
             except KeyboardInterrupt:
