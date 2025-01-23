@@ -30,7 +30,7 @@ def get_video_parts(bvid: str) -> List[Tuple[int, str]]:
     headers = {
         'User-Agent': config.bilibili['user_agent']
     }   
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=10)
     result = response.json()
     if result["code"] != 0:
         raise Exception(f"获取视频分P失败: {result['message']}")
@@ -62,7 +62,7 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, csrf: str, se
     }
     
     try:
-        response = requests.post(url, data=params, headers=headers)
+        response = requests.post(url, data=params, headers=headers, timeout=10)
         result = response.json()
         success = result["code"] == 0
         message = handle_response_code(result["code"])
@@ -72,7 +72,12 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, csrf: str, se
             logger.warning(f"Cookie失效，尝试刷新: {message}")
             from cookie_refresh import refresh_all_cookies
             
-            new_accounts = refresh_all_cookies()
+            try:
+                new_accounts = refresh_all_cookies()
+            except Exception as e:
+                logger.error(f"刷新Cookie失败: {e}")
+                return False, "Cookie刷新失败", {}
+
             
             # 如果刷新成功，使用新的cookie重试
             if new_accounts:
@@ -288,7 +293,7 @@ def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) ->
     }
     
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         result = response.json()
         if result["code"] != 0:
             print(f"请求失败: {result['message']}")
