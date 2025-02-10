@@ -16,3 +16,5 @@ monitor:
 danmaku:
   max_count_per_hour: 500  # 每小时最多弹幕数量
   send_interval: 6  # 发送间隔(秒) 
+  ban_keywords:
+    - " 正在参与 "

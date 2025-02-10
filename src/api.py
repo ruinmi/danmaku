@@ -111,8 +111,8 @@ def handle_response_code(code: int) -> str:
 
 def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: int = 500, time_window: float = 0.5) -> List[Tuple[float, str]]:
     """
-    过滤弹幕，确保均匀分布且去重
-    
+    过滤弹幕，确保均匀分布、去重，并且过滤包含禁用关键词的弹幕
+
     参数:
         danmaku_list: 原始弹幕列表 [(时间戳, 内容),...]
         max_count_per_hour: 每小时最大弹幕数
@@ -123,6 +123,20 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     if not danmaku_list:
         return []
     
+    # 从配置中获取禁用关键词列表
+    banned_keywords = config.danmaku.get("ban_keywords", [])
+
+    # 先过滤掉包含禁用关键词的弹幕
+    danmaku_list = [
+        (timestamp, content) 
+        for timestamp, content in danmaku_list 
+        if not any(keyword in content for keyword in banned_keywords)
+    ]
+
+    # 如果全部弹幕均被过滤，则直接返回空列表
+    if not danmaku_list:
+        return []
+
     # 按时间排序
     danmaku_list.sort(key=lambda x: x[0])
     
@@ -131,7 +145,6 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     
     # 计算实际每小时最大弹幕数
     max_count = int(max_count_per_hour * video_duration)
-
     if max_count == 0:
         return []
     
