@@ -125,12 +125,12 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     
     # 从配置中获取禁用关键词列表
     banned_keywords = config.danmaku.get("ban_keywords", [])
-
+    
     # 先过滤掉包含禁用关键词的弹幕
     danmaku_list = [
         (timestamp, content) 
         for timestamp, content in danmaku_list 
-        if not any(keyword in content for keyword in banned_keywords)
+        if content and not any(keyword in content for keyword in banned_keywords)
     ]
 
     # 如果全部弹幕均被过滤，则直接返回空列表

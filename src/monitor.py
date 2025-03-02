@@ -58,7 +58,7 @@ class VideoMonitor:
                 logger.info(f"视频 {video['title_keyword']} 处理完成")
                 
             except Exception as e:
-                logger.error(f"处理视频失败: {str(e)}")
+                logger.error(f"处理视频失败: {str(e)}", exc_info=True)
         
         if processed_videos:
             # 重新读取最新的待处理列表
