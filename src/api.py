@@ -171,7 +171,17 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     current_window_start = unique_danmaku[0][0]
     window_danmaku = []
     
-    for timestamp, content in unique_danmaku:
+    for i, (timestamp, content) in enumerate(unique_danmaku):
+        if len(filtered_danmaku) + (len(unique_danmaku) - i) <= max_count:
+            # 加上当前窗口的弹幕（如果有）
+            if window_danmaku:
+                mid_idx = len(window_danmaku) // 2
+                filtered_danmaku.append(window_danmaku[mid_idx])
+                window_danmaku = []
+            # 剩下的弹幕全部加入
+            filtered_danmaku.extend(unique_danmaku[i:])
+            break
+        
         # 如果当前弹幕时间超出了当前窗口
         while timestamp > current_window_start + window_size:
             # 从当前窗口中选择一条弹幕（如果有的话）
