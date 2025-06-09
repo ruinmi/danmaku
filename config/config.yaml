@@ -18,3 +18,4 @@ danmaku:
   send_interval: 6  # 发送间隔(秒) 
   ban_keywords:
     - " 正在参与 "
+  max_repeat_count: 7  # 最大重复次数

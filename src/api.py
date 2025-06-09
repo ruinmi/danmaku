@@ -110,14 +110,14 @@ def handle_response_code(code: int) -> str:
     }
     return code_messages.get(code, f"未知错误，错误码：{code}")
 
-def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: int = 500, time_window: float = 0.5) -> List[Tuple[float, str]]:
+def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: int = 500, max_repeat_count: int = 1) -> List[Tuple[float, str]]:
     """
     过滤弹幕，确保均匀分布、去重，并且过滤包含禁用关键词的弹幕
 
     参数:
         danmaku_list: 原始弹幕列表 [(时间戳, 内容),...]
         max_count_per_hour: 每小时最大弹幕数
-        time_window: 时间窗口（秒）
+        max_repeat_count: 允许的最大重复次数
     返回:
         过滤后的弹幕列表
     """
@@ -141,6 +141,17 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     # 按时间排序
     danmaku_list.sort(key=lambda x: x[0])
     
+    # 去重并检查重复次数
+    seen_contents = {}
+    unique_danmaku = []
+    for timestamp, content in danmaku_list:
+        # 检查当前内容的出现次数
+        seen_contents[content] = seen_contents.get(content, 0) + 1
+        
+        # 如果内容出现的次数小于等于允许的最大重复次数，则保留
+        if seen_contents[content] <= max_repeat_count:
+            unique_danmaku.append((timestamp, content))
+
     # 获取视频总时长（小时）
     video_duration = danmaku_list[-1][0] / 3600
     
@@ -148,14 +159,6 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     max_count = int(max_count_per_hour * video_duration)
     if max_count == 0:
         return []
-    
-    # 去重
-    seen_contents = set()
-    unique_danmaku = []
-    for timestamp, content in danmaku_list:
-        if content not in seen_contents:
-            unique_danmaku.append((timestamp, content))
-            seen_contents.add(content)
     
     # 如果去重后数量小于限制，直接返回
     if len(unique_danmaku) <= max_count:
@@ -169,7 +172,17 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     current_window_start = unique_danmaku[0][0]
     window_danmaku = []
     
-    for timestamp, content in unique_danmaku:
+    for i, (timestamp, content) in enumerate(unique_danmaku):
+        if len(filtered_danmaku) + (len(unique_danmaku) - i) <= max_count:
+            # 加上当前窗口的弹幕（如果有）
+            if window_danmaku:
+                mid_idx = len(window_danmaku) // 2
+                filtered_danmaku.append(window_danmaku[mid_idx])
+                window_danmaku = []
+            # 剩下的弹幕全部加入
+            filtered_danmaku.extend(unique_danmaku[i:])
+            break
+        
         # 如果当前弹幕时间超出了当前窗口
         while timestamp > current_window_start + window_size:
             # 从当前窗口中选择一条弹幕（如果有的话）
@@ -210,7 +223,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     filtered_danmaku = filter_danmaku(
         danmaku_list,
         max_count_per_hour=config.danmaku['max_count_per_hour'],
-        time_window=1
+        max_repeat_count=config.danmaku['max_repeat_count']
     )
     
     logger.info(f"原始弹幕数量: {len(danmaku_list)}, 过滤后数量: {len(filtered_danmaku)}")
