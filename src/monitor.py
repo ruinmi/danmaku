@@ -38,7 +38,7 @@ class VideoMonitor:
                 # 获取视频分P信息并发送弹幕
                 parts = get_video_parts(bvid)
                 
-                for cid, part in parts:
+                for cid, part, duration in parts:
                     xml_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'danmaku', f"{part}.xml")
                     if not os.path.exists(xml_file):
                         logger.warning(f"XML文件不存在: {xml_file}")
@@ -47,6 +47,7 @@ class VideoMonitor:
                     auto_send_danmaku(
                         xml_path=xml_file,
                         video_cid=cid,
+                        video_duration=duration,
                         bvid=bvid
                     )
                     # 发送完成后删除XML文件

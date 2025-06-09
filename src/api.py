@@ -24,7 +24,7 @@ def get_wbi_sign(params: dict) -> tuple[str, str]:
     
     return w_rid, wts
 
-def get_video_parts(bvid: str) -> List[Tuple[int, str]]:
+def get_video_parts(bvid: str) -> List[Tuple[int, str, int]]:
     """获取视频分P信息"""
     url = f"https://api.bilibili.com/x/player/pagelist?bvid={bvid}"
     headers = {
@@ -34,7 +34,7 @@ def get_video_parts(bvid: str) -> List[Tuple[int, str]]:
     result = response.json()
     if result["code"] != 0:
         raise Exception(f"获取视频分P失败: {result['message']}")
-    return [(item["cid"], item["part"]) for item in result["data"]]
+    return [(item["cid"], item["part"], item['duration']) for item in result["data"]]
 
 def send_danmaku(oid: int, message: str, bvid: str, progress: int, csrf: str, sessdata: str) -> tuple[bool, str, dict]:
     """发送弹幕"""
@@ -106,6 +106,7 @@ def handle_response_code(code: int) -> str:
         36703: "发送频率过快",
         36704: "禁止向未审核的视频发送弹幕",
         36705: "您的等级不足，不能发送弹幕",
+        36714: "弹幕时间不合法",
     }
     return code_messages.get(code, f"未知错误，错误码：{code}")
 
@@ -188,7 +189,7 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     
     return filtered_danmaku
 
-def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
+def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: str):
     """自动发送XML文件中的弹幕"""
     
     start_time = time.time()  # 记录开始时间
@@ -238,7 +239,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, bvid: str):
                 oid=video_cid,
                 bvid=bvid,
                 message=content,
-                progress=int(timestamp * 1000),
+                progress=max(int(timestamp * 1000), video_duration * 1000),
                 csrf=current_account['csrf'],
                 sessdata=current_account['sessdata']
             )

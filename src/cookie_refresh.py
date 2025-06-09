@@ -31,7 +31,7 @@ JNrRuoEUXpabUzGB8QIDAQAB
         url = "https://passport.bilibili.com/x/passport-login/web/cookie/info"
         headers = {
             'Cookie': f"SESSDATA={account['sessdata']}; bili_jct={account['csrf']}",
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+            'User-Agent': config.bilibili['user_agent'],
         }
 
         try:
@@ -50,7 +50,7 @@ JNrRuoEUXpabUzGB8QIDAQAB
         correspond_path = self.get_correspond_path(ts)
         url = f"https://www.bilibili.com/correspond/1/{correspond_path}"
         headers = {'Cookie': f"SESSDATA={account['sessdata']}",
-                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36', }
+                   'User-Agent': config.bilibili['user_agent'], }
         try:
             response = requests.get(url, headers=headers)
             # 使用正则表达式从HTML中提取refresh_csrf
@@ -82,7 +82,7 @@ JNrRuoEUXpabUzGB8QIDAQAB
             'refresh_token': account.get('refresh_token', '')
         }
         headers = {'Cookie': f"SESSDATA={account['sessdata']}; bili_jct={account['csrf']}",
-                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36', }
+                   'User-Agent': config.bilibili['user_agent'], }
 
         try:
             response = requests.post(url, data=data, headers=headers)
@@ -115,7 +115,7 @@ JNrRuoEUXpabUzGB8QIDAQAB
             'refresh_token': old_refresh_token
         }
         headers = {'Cookie': f"SESSDATA={new_account['sessdata']}; bili_jct={new_account['csrf']}",
-                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'}
+                   'User-Agent': config.bilibili['user_agent']}
 
         try:
             response = requests.post(url, data=data, headers=headers)
