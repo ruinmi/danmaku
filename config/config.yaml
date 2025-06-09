@@ -2,6 +2,7 @@
 bilibili:
   # 账号列表，支持多账号
   accounts: []
+  batch_size: 3
   # 浏览器 User-Agent
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 

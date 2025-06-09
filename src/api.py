@@ -231,7 +231,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     # 发送弹幕
     rate_limit_wait = config.danmaku['send_interval']  # 初始等待时间
     accounts = config.bilibili['accounts']
-    batch_size = 2  # 每批账号数量
+    batch_size = config.bilibili['batch_size']  # 每批账号数量
     success_streak = 0  # 连续成功的批次数
     danmaku_count = 0
     
@@ -244,6 +244,9 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
         current_accounts = account_batches[current_batch]
         rate_limited = False
         
+        # 计算批量账号里面的名字最长的名字个数，名字里面的中文算两个长度
+        max_name_length = max(len(account['uname']) + sum(1 for c in account['uname'] if ord(c) > 127) for account in current_accounts)
+
         # 并行发送当前批次的弹幕
         for j, (timestamp, content) in enumerate(batch_danmaku):
             account_index = j % len(current_accounts)
@@ -257,7 +260,11 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
                 sessdata=current_account['sessdata']
             )
             
-            logger.info(f"({danmaku_count+j+1}/{len(filtered_danmaku)}) {current_account['uname']:<16}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(timestamp))}) {content}")
+
+            # Adjust padding for names with mixed characters (including Chinese)
+            adjusted_name = current_account['uname']
+            padding_length = max_name_length - len(adjusted_name) - sum(1 for c in adjusted_name if ord(c) > 127)
+            logger.info(f"({danmaku_count+j+1}/{len(filtered_danmaku)}) {adjusted_name}{' ' * (padding_length + 5)}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(timestamp))}) {content}")
             
             if not success:
                 if message in ["账号未登录", "csrf校验失败"]:
@@ -300,7 +307,14 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     seconds = int(total_time % 60)
     
     logger.info(f"弹幕发送完成，总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}")
-
+def calculate_max_name_length_and_print():
+    account1 = {'uname': '绿地上'}
+    account2 = {'uname': 'safsadg'}
+    account3 = {'uname': 'czxvgfdhgh'}
+    current_accounts = [account1, account2, account3]
+    max_name_length = max(len(account['uname']) + sum(1 for c in account['uname'] if ord(c) > 127) for account in current_accounts)
+    print(max_name_length)
+    print(f"{account1['uname']:<{max_name_length}}")
 def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) -> str:
     """
     检查UP主最新视频
