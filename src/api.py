@@ -234,8 +234,6 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     XML中 ``<d>`` 标签表示普通弹幕，``<s type="gift">`` 表示礼物弹幕。
     礼物弹幕未来可能包含 ``since_start``，表示距离视频开始的时间；
     若没有该字段，则通过 ``timestamp`` 与普通弹幕推算基准时间。
-    普通弹幕会封装为 ``[用户名]([用户id])：[内容]``，礼物弹幕会封装为
-    ``[用户名]([用户id]) 送出[礼物名称] x[礼物数量]``。
     """
     
     start_time = time.time()  # 记录开始时间
@@ -279,6 +277,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
         if base_timestamp is None:
             base_timestamp = float(pending_gifts[0].get('timestamp', '0'))
         _flush_gifts(pending_gifts, base_timestamp, danmaku_list)
+
     
     # 过滤和均匀分布弹幕
     filtered_danmaku = filter_danmaku(
