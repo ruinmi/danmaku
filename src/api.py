@@ -309,7 +309,10 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
             content = elem.text or ""
             uname = elem.get('user', '')
             uid = elem.get('uid', '')
-            message = f"{uname}({uid})：{content}"
+            if uname == '' or uid == '':
+                message = content
+            else:
+                message = f"{uname}({uid})：{content}"
             danmaku_list.append((time_stamp, message, content, "d"))
 
 
