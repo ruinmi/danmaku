@@ -199,15 +199,41 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     if window_danmaku:
         mid_idx = len(window_danmaku) // 2
         filtered_danmaku.append(window_danmaku[mid_idx])
-    
+
     return filtered_danmaku
+
+
+def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str] | None:
+    """将礼物弹幕元素转换为时间戳和消息文本"""
+    since_start = elem.get('since_start')
+    if since_start is not None:
+        time_stamp = float(since_start)
+    elif base_timestamp is not None:
+        abs_time = float(elem.get('timestamp', '0'))
+        time_stamp = abs_time - base_timestamp
+    else:
+        return None
+    uname = elem.get('username', '')
+    uid = elem.get('uid', '')
+    giftname = elem.get('giftname', '')
+    num = elem.get('num', '')
+    return time_stamp, f"{uname}({uid}) 送出{giftname} x{num}"
+
+
+def _flush_gifts(pending_gifts: List[ET.Element], base_timestamp: float, danmaku_list: List[Tuple[float, str]]):
+    """将缓存的礼物弹幕转换为普通弹幕格式并加入列表"""
+    for g in pending_gifts:
+        parsed = _parse_gift(g, base_timestamp)
+        if parsed is not None:
+            danmaku_list.append(parsed)
+    pending_gifts.clear()
 
 def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: str):
     """根据XML文件内容自动发送弹幕
 
     XML中 ``<d>`` 标签表示普通弹幕，``<s type="gift">`` 表示礼物弹幕。
-    普通弹幕会封装为 ``[用户名]([用户id])：[内容]``，礼物弹幕会封装为
-    ``[用户名]([用户id]) 送出[礼物名称] x[礼物数量]``。
+    礼物弹幕未来可能包含 ``since_start``，表示距离视频开始的时间；
+    若没有该字段，则通过 ``timestamp`` 与普通弹幕推算基准时间。
     """
     
     start_time = time.time()  # 记录开始时间
@@ -229,17 +255,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
 
             if base_timestamp is None:
                 base_timestamp = abs_time - rel_time
-                # 现在可以解析之前缓存的礼物弹幕
-                for g in pending_gifts:
-                    g_abs = float(g.get('timestamp', '0'))
-                    g_time = g_abs - base_timestamp
-                    g_uname = g.get('username', '')
-                    g_uid = g.get('uid', '')
-                    g_giftname = g.get('giftname', '')
-                    g_num = g.get('num', '')
-                    g_msg = f"{g_uname}({g_uid}) 送出{g_giftname} x{g_num}"
-                    danmaku_list.append((g_time, g_msg))
-                pending_gifts.clear()
+                _flush_gifts(pending_gifts, base_timestamp, danmaku_list)
 
             time_stamp = rel_time if p_attr else abs_time - base_timestamp
 
@@ -250,32 +266,18 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
             danmaku_list.append((time_stamp, message))
 
         elif elem.tag == 's' and elem.get('type') == 'gift':
-            # 礼物弹幕
-            if base_timestamp is None:
+            parsed = _parse_gift(elem, base_timestamp)
+            if parsed is None:
                 pending_gifts.append(elem)
-                continue
-            abs_time = float(elem.get('timestamp', '0'))
-            time_stamp = abs_time - base_timestamp
-            uname = elem.get('username', '')
-            uid = elem.get('uid', '')
-            giftname = elem.get('giftname', '')
-            num = elem.get('num', '')
-            message = f"{uname}({uid}) 送出{giftname} x{num}"
-            danmaku_list.append((time_stamp, message))
+            else:
+                danmaku_list.append(parsed)
 
-    # 若遍历结束后仍未确定基准时间，使用最早礼物弹幕的时间作为基准
-    if base_timestamp is None and pending_gifts:
-        first_gift_ts = float(pending_gifts[0].get('timestamp', '0'))
-        base_timestamp = first_gift_ts
-    for g in pending_gifts:
-        g_abs = float(g.get('timestamp', '0'))
-        g_time = g_abs - base_timestamp
-        g_uname = g.get('username', '')
-        g_uid = g.get('uid', '')
-        g_giftname = g.get('giftname', '')
-        g_num = g.get('num', '')
-        g_msg = f"{g_uname}({g_uid}) 送出{g_giftname} x{g_num}"
-        danmaku_list.append((g_time, g_msg))
+    # 若遍历结束后仍未确定基准时间，使用最早礼物弹幕时间作为基准
+    if pending_gifts:
+        if base_timestamp is None:
+            base_timestamp = float(pending_gifts[0].get('timestamp', '0'))
+        _flush_gifts(pending_gifts, base_timestamp, danmaku_list)
+
     
     # 过滤和均匀分布弹幕
     filtered_danmaku = filter_danmaku(
