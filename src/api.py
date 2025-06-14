@@ -246,6 +246,32 @@ def _flush_gifts(
             danmaku_list.append(parsed)
     pending_gifts.clear()
 
+
+def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str] | None:
+    """将礼物弹幕元素转换为时间戳和消息文本"""
+    since_start = elem.get('since_start')
+    if since_start is not None:
+        time_stamp = float(since_start)
+    elif base_timestamp is not None:
+        abs_time = float(elem.get('timestamp', '0'))
+        time_stamp = abs_time - base_timestamp
+    else:
+        return None
+    uname = elem.get('username', '')
+    uid = elem.get('uid', '')
+    giftname = elem.get('giftname', '')
+    num = elem.get('num', '')
+    return time_stamp, f"{uname}({uid}) 送出{giftname} x{num}"
+
+
+def _flush_gifts(pending_gifts: List[ET.Element], base_timestamp: float, danmaku_list: List[Tuple[float, str]]):
+    """将缓存的礼物弹幕转换为普通弹幕格式并加入列表"""
+    for g in pending_gifts:
+        parsed = _parse_gift(g, base_timestamp)
+        if parsed is not None:
+            danmaku_list.append(parsed)
+    pending_gifts.clear()
+
 def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: str):
     """根据XML文件内容自动发送弹幕
 
@@ -254,6 +280,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     若没有该字段，则通过 ``timestamp`` 与普通弹幕推算基准时间。
     普通弹幕会封装为 ``[用户名]([用户id])：[内容]``，礼物弹幕会封装为
     ``[用户名]([用户id]) 送出[礼物名称] x[礼物数量]``。
+    
     """
     
     start_time = time.time()  # 记录开始时间
@@ -284,6 +311,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
             uid = elem.get('uid', '')
             message = f"{uname}({uid})：{content}"
             danmaku_list.append((time_stamp, message, content, "d"))
+
 
         elif elem.tag == 's' and elem.get('type') == 'gift':
             parsed = _parse_gift(elem, base_timestamp)
