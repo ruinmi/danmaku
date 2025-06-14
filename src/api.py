@@ -199,11 +199,44 @@ def filter_danmaku(danmaku_list: List[Tuple[float, str]], max_count_per_hour: in
     if window_danmaku:
         mid_idx = len(window_danmaku) // 2
         filtered_danmaku.append(window_danmaku[mid_idx])
-    
+
     return filtered_danmaku
 
+
+def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str] | None:
+    """将礼物弹幕元素转换为时间戳和消息文本"""
+    since_start = elem.get('since_start')
+    if since_start is not None:
+        time_stamp = float(since_start)
+    elif base_timestamp is not None:
+        abs_time = float(elem.get('timestamp', '0'))
+        time_stamp = abs_time - base_timestamp
+    else:
+        return None
+    uname = elem.get('username', '')
+    uid = elem.get('uid', '')
+    giftname = elem.get('giftname', '')
+    num = elem.get('num', '')
+    return time_stamp, f"{uname}({uid}) 送出{giftname} x{num}"
+
+
+def _flush_gifts(pending_gifts: List[ET.Element], base_timestamp: float, danmaku_list: List[Tuple[float, str]]):
+    """将缓存的礼物弹幕转换为普通弹幕格式并加入列表"""
+    for g in pending_gifts:
+        parsed = _parse_gift(g, base_timestamp)
+        if parsed is not None:
+            danmaku_list.append(parsed)
+    pending_gifts.clear()
+
 def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: str):
-    """自动发送XML文件中的弹幕"""
+    """根据XML文件内容自动发送弹幕
+
+    XML中 ``<d>`` 标签表示普通弹幕，``<s type="gift">`` 表示礼物弹幕。
+    礼物弹幕未来可能包含 ``since_start``，表示距离视频开始的时间；
+    若没有该字段，则通过 ``timestamp`` 与普通弹幕推算基准时间。
+    普通弹幕会封装为 ``[用户名]([用户id])：[内容]``，礼物弹幕会封装为
+    ``[用户名]([用户id]) 送出[礼物名称] x[礼物数量]``。
+    """
     
     start_time = time.time()  # 记录开始时间
     
@@ -211,13 +244,41 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     tree = ET.parse(xml_path)
     root = tree.getroot()
     danmaku_list = []
-    
+    base_timestamp = None  # 视频开始的 Unix 时间戳
+    pending_gifts: List[ET.Element] = []
+
     # 收集所有弹幕
-    for d in root.findall('d'):
-        p_attrs = d.get('p').split(',')
-        time_stamp = float(p_attrs[0])
-        content = d.text
-        danmaku_list.append((time_stamp, content))
+    for elem in root:
+        if elem.tag == 'd':
+            # 普通弹幕
+            p_attr = elem.get('p')
+            rel_time = float(p_attr.split(',')[0]) if p_attr else 0.0
+            abs_time = float(elem.get('timestamp', '0'))
+
+            if base_timestamp is None:
+                base_timestamp = abs_time - rel_time
+                _flush_gifts(pending_gifts, base_timestamp, danmaku_list)
+
+            time_stamp = rel_time if p_attr else abs_time - base_timestamp
+
+            content = elem.text or ""
+            uname = elem.get('user', '')
+            uid = elem.get('uid', '')
+            message = f"{uname}({uid})：{content}"
+            danmaku_list.append((time_stamp, message))
+
+        elif elem.tag == 's' and elem.get('type') == 'gift':
+            parsed = _parse_gift(elem, base_timestamp)
+            if parsed is None:
+                pending_gifts.append(elem)
+            else:
+                danmaku_list.append(parsed)
+
+    # 若遍历结束后仍未确定基准时间，使用最早礼物弹幕时间作为基准
+    if pending_gifts:
+        if base_timestamp is None:
+            base_timestamp = float(pending_gifts[0].get('timestamp', '0'))
+        _flush_gifts(pending_gifts, base_timestamp, danmaku_list)
     
     # 过滤和均匀分布弹幕
     filtered_danmaku = filter_danmaku(
@@ -249,7 +310,10 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
 
         # 并行发送当前批次的弹幕
         for j, (timestamp, content) in enumerate(batch_danmaku):
-            progress = min(int(timestamp * 1000) - 3000, video_duration * 1000)
+            progress = max(
+                min(int(timestamp * 1000) - 3000, video_duration * 1000),
+                0
+            )
             account_index = j % len(current_accounts)
             current_account = current_accounts[account_index]
             success, message, result = send_danmaku(
