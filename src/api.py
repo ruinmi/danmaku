@@ -249,13 +249,14 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
 
         # 并行发送当前批次的弹幕
         for j, (timestamp, content) in enumerate(batch_danmaku):
+            progress = min(int(timestamp * 1000) - 3000, video_duration * 1000)
             account_index = j % len(current_accounts)
             current_account = current_accounts[account_index]
             success, message, result = send_danmaku(
                 oid=video_cid,
                 bvid=bvid,
                 message=content,
-                progress=max(int(timestamp * 1000), video_duration * 1000),
+                progress=progress,
                 csrf=current_account['csrf'],
                 sessdata=current_account['sessdata']
             )
@@ -264,7 +265,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
             # Adjust padding for names with mixed characters (including Chinese)
             adjusted_name = current_account['uname']
             padding_length = max_name_length - len(adjusted_name) - sum(1 for c in adjusted_name if ord(c) > 127)
-            logger.info(f"({danmaku_count+j+1}/{len(filtered_danmaku)}) {adjusted_name}{' ' * (padding_length + 5)}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(timestamp))}) {content}")
+            logger.info(f"({danmaku_count+j+1}/{len(filtered_danmaku)}) {adjusted_name}{' ' * (padding_length + 5)}(Lv{current_account['level']}) 发送弹幕: ({time.strftime('%H:%M:%S', time.gmtime(progress / 1000))}) {content}")
             
             if not success:
                 if message in ["账号未登录", "csrf校验失败"]:
@@ -307,14 +308,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     seconds = int(total_time % 60)
     
     logger.info(f"弹幕发送完成，总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}")
-def calculate_max_name_length_and_print():
-    account1 = {'uname': '绿地上'}
-    account2 = {'uname': 'safsadg'}
-    account3 = {'uname': 'czxvgfdhgh'}
-    current_accounts = [account1, account2, account3]
-    max_name_length = max(len(account['uname']) + sum(1 for c in account['uname'] if ord(c) > 127) for account in current_accounts)
-    print(max_name_length)
-    print(f"{account1['uname']:<{max_name_length}}")
+
 def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) -> str:
     """
     检查UP主最新视频
