@@ -36,7 +36,7 @@ def get_video_parts(bvid: str) -> List[Tuple[int, str, int]]:
         raise Exception(f"获取视频分P失败: {result['message']}")
     return [(item["cid"], item["part"], item['duration']) for item in result["data"]]
 
-def send_danmaku(oid: int, message: str, bvid: str, progress: int, csrf: str, sessdata: str) -> tuple[bool, str, dict]:
+def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, csrf: str, sessdata: str) -> tuple[bool, str, dict]:
     """发送弹幕"""
     base_url = "https://api.bilibili.com/x/v2/dm/post"
     
@@ -46,7 +46,7 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, csrf: str, se
         "msg": message,
         "bvid": bvid,
         "progress": progress,
-        "color": 16777215,
+        "color": color,
         "mode": 1,
         "rnd": int(time.time() * 1000000),
         "csrf": csrf
@@ -84,7 +84,7 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, csrf: str, se
                 for account in new_accounts:
                     if account['csrf'] == csrf:
                         logger.info("使用新的Cookie重试发送弹幕")
-                        return send_danmaku(oid, message, bvid, progress, 
+                        return send_danmaku(oid, message, bvid, progress, color,
                                          account['csrf'], account['sessdata'])
         
         return success, message, result
@@ -162,7 +162,7 @@ def filter_danmaku(
         return [(t, m) for t, m, _, _ in unique_danmaku]
 
     # 获取视频总时长（小时）
-    video_duration = (normal_danmaku[-1][0] - normal_danmaku[0][0]) / 3600
+    video_duration = danmaku_list[-1][0] / 3600
     
     # 计算实际每小时最大弹幕数
     max_count = int(max_count_per_hour * video_duration)
@@ -209,7 +209,7 @@ def filter_danmaku(
     result = final_normal + gifts
     result.sort(key=lambda x: x[0])
 
-    return [(ts, msg) for ts, msg, _, _ in result]
+    return [(ts, msg, tpe) for ts, msg, _, tpe in result]
 
 
 def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str, str, str] | None:
@@ -229,7 +229,9 @@ def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, 
     uid = elem.get('uid', '')
     giftname = elem.get('giftname', '')
     num = elem.get('num', '')
-    message = f"{uname}({uid}) 送出{giftname} x{num}"
+    message = f"{uname}({uid}) donate {giftname} x{num}"
+    if giftname.startswith("点亮"):
+        message = f"{uname}({uid}) {giftname}"
     original = f"{giftname} x{num}"
     return time_stamp, message, original, "gift"
 
@@ -247,7 +249,7 @@ def _flush_gifts(
     pending_gifts.clear()
 
 
-def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str] | None:
+def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str, str, str] | None:
     """将礼物弹幕元素转换为时间戳和消息文本"""
     since_start = elem.get('since_start')
     if since_start is not None:
@@ -261,7 +263,11 @@ def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, 
     uid = elem.get('uid', '')
     giftname = elem.get('giftname', '')
     num = elem.get('num', '')
-    return time_stamp, f"{uname}({uid}) 送出{giftname} x{num}"
+    original = f"{giftname} x{num}"
+    message = f"{uname}({uid}) donate {giftname} x{num}"
+    if giftname.startswith("点亮"):
+        message = f"{uname}({uid}) {giftname}"
+    return time_stamp, message, original, "gift"
 
 
 def _flush_gifts(pending_gifts: List[ET.Element], base_timestamp: float, danmaku_list: List[Tuple[float, str]]):
@@ -272,6 +278,7 @@ def _flush_gifts(pending_gifts: List[ET.Element], base_timestamp: float, danmaku
             danmaku_list.append(parsed)
     pending_gifts.clear()
 
+
 def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: str):
     """根据XML文件内容自动发送弹幕
 
@@ -279,7 +286,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     礼物弹幕未来可能包含 ``since_start``，表示距离视频开始的时间；
     若没有该字段，则通过 ``timestamp`` 与普通弹幕推算基准时间。
     普通弹幕会封装为 ``[用户名]([用户id])：[内容]``，礼物弹幕会封装为
-    ``[用户名]([用户id]) 送出[礼物名称] x[礼物数量]``。
+    ``[用户名]([用户id]) donate [礼物名称] x[礼物数量]``。
     
     """
     
@@ -358,18 +365,20 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
         max_name_length = max(len(account['uname']) + sum(1 for c in account['uname'] if ord(c) > 127) for account in current_accounts)
 
         # 并行发送当前批次的弹幕
-        for j, (timestamp, content) in enumerate(batch_danmaku):
+        for j, (timestamp, content, tpe) in enumerate(batch_danmaku):
             progress = max(
                 min(int(timestamp * 1000) - 3000, video_duration * 1000),
                 0
             )
             account_index = j % len(current_accounts)
             current_account = current_accounts[account_index]
+            color = 16776960 if tpe == 'gift' else 16777215
             success, message, result = send_danmaku(
                 oid=video_cid,
                 bvid=bvid,
                 message=content,
                 progress=progress,
+                color=color,
                 csrf=current_account['csrf'],
                 sessdata=current_account['sessdata']
             )
