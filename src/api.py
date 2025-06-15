@@ -112,10 +112,10 @@ def handle_response_code(code: int) -> str:
     return code_messages.get(code, f"未知错误，错误码：{code}")
 
 def filter_danmaku(
-    danmaku_list: List[Tuple[float, str, str, str]],
+    danmaku_list: List[Tuple[float, str, str, str, str]],
     max_count_per_hour: int = 500,
     max_repeat_count: int = 1,
-) -> List[Tuple[float, str]]:
+) -> List[Tuple[float, str, str]]:
     """根据原始内容过滤弹幕并均匀分布普通弹幕
 
     ``danmaku_list`` 每项为 ``(timestamp, message, original, type)``，其中
@@ -133,7 +133,7 @@ def filter_danmaku(
         item
         for item in danmaku_list
         if (
-            item[3] == "gift"
+            item[4] == "gift"
             or (item[2] and not any(k in item[2] for k in banned_keywords))
         )
     ]
@@ -147,9 +147,9 @@ def filter_danmaku(
     
     # 去重并检查重复次数（礼物弹幕不去重）
     seen_contents: dict[str, int] = {}
-    unique_danmaku: List[Tuple[float, str, str, str]] = []
+    unique_danmaku: List[Tuple[float, str, str, str, str]] = []
     for item in danmaku_list:
-        ts, msg, orig, typ = item
+        ts, msg, orig, price, typ = item
         if typ == "gift":
             unique_danmaku.append(item)
             continue
@@ -158,9 +158,9 @@ def filter_danmaku(
             unique_danmaku.append(item)
 
     # 筛选出普通弹幕用于计算频率
-    normal_danmaku = [d for d in unique_danmaku if d[3] != "gift"]
+    normal_danmaku = [d for d in unique_danmaku if d[4] != "gift"]
     if not normal_danmaku:
-        return [(t, m) for t, m, _, _ in unique_danmaku]
+        return [(t, m, typ) for t, m, _, _, typ in unique_danmaku]
 
     # 获取视频总时长（小时）
     video_duration = danmaku_list[-1][0] / 3600
@@ -178,9 +178,9 @@ def filter_danmaku(
         window_size = (normal_danmaku[-1][0] - normal_danmaku[0][0]) / max_count
 
         # 使用滑动窗口选择弹幕
-        final_normal: List[Tuple[float, str, str, str]] = []
+        final_normal: List[Tuple[float, str, str, str, str]] = []
         current_window_start = normal_danmaku[0][0]
-        window_danmaku: List[Tuple[float, str, str, str]] = []
+        window_danmaku: List[Tuple[float, str, str, str, str]] = []
 
         for i, item in enumerate(normal_danmaku):
             ts = item[0]
@@ -206,14 +206,14 @@ def filter_danmaku(
             final_normal.append(window_danmaku[mid_idx])
 
     # 礼物弹幕保持原顺序加入
-    gifts = [d for d in unique_danmaku if d[3] == "gift"]
+    gifts = [d for d in unique_danmaku if d[4] == "gift"]
     result = final_normal + gifts
     result.sort(key=lambda x: x[0])
 
-    return [(ts, msg, tpe) for ts, msg, _, tpe in result]
+    return [(ts, msg, tpe) for ts, msg, _, _, tpe in result]
 
 
-def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str, str, str] | None:
+def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str, str, str, str] | None:
     """将礼物弹幕元素转换为时间戳和消息文本
 
     返回 ``(time, message, original_content, 'gift')``，若 ``base_timestamp`` 未确定则返回 ``None``。
@@ -229,49 +229,21 @@ def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, 
     uname = elem.get('username', elem.get('user', ''))
     uid = elem.get('uid', '')
     giftname = elem.get('giftname', '')
-    num = elem.get('num', '')
+    price = elem.get('price', '0')
+    num = elem.get('num', '0')
+    total_price = str(int(price) * int(num))
     message = f"{uname}({uid}) donate {giftname} x{num}"
     if giftname.startswith("点亮"):
         message = f"{uname}({uid}) {giftname}"
     original = f"{giftname} x{num}"
-    return time_stamp, message, original, "gift"
+    return time_stamp, message, original, total_price, "gift"
 
 
 def _flush_gifts(
     pending_gifts: List[ET.Element],
     base_timestamp: float,
-    danmaku_list: List[Tuple[float, str, str, str]],
+    danmaku_list: List[Tuple[float, str, str, str, str]],
 ) -> None:
-    """将缓存的礼物弹幕转换为普通弹幕格式并加入列表"""
-    for g in pending_gifts:
-        parsed = _parse_gift(g, base_timestamp)
-        if parsed is not None:
-            danmaku_list.append(parsed)
-    pending_gifts.clear()
-
-
-def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, str, str, str] | None:
-    """将礼物弹幕元素转换为时间戳和消息文本"""
-    since_start = elem.get('since_start')
-    if since_start is not None:
-        time_stamp = float(since_start)
-    elif base_timestamp is not None:
-        abs_time = float(elem.get('timestamp', '0'))
-        time_stamp = abs_time - base_timestamp
-    else:
-        return None
-    uname = elem.get('username', elem.get('user', ''))
-    uid = elem.get('uid', '')
-    giftname = elem.get('giftname', '')
-    num = elem.get('num', '')
-    original = f"{giftname} x{num}"
-    message = f"{uname}({uid}) donate {giftname} x{num}"
-    if giftname.startswith("点亮"):
-        message = f"{uname}({uid}) {giftname}"
-    return time_stamp, message, original, "gift"
-
-
-def _flush_gifts(pending_gifts: List[ET.Element], base_timestamp: float, danmaku_list: List[Tuple[float, str]]):
     """将缓存的礼物弹幕转换为普通弹幕格式并加入列表"""
     for g in pending_gifts:
         parsed = _parse_gift(g, base_timestamp)
@@ -296,7 +268,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     # 读取XML文件
     tree = ET.parse(xml_path)
     root = tree.getroot()
-    danmaku_list: List[Tuple[float, str, str, str]] = []
+    danmaku_list: List[Tuple[float, str, str, str, str]] = []
     base_timestamp = None  # 视频开始的 Unix 时间戳
     pending_gifts: List[ET.Element] = []
 
@@ -321,7 +293,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
                 message = content
             else:
                 message = f"{uname}({uid})：{content}"
-            danmaku_list.append((time_stamp, message, content, "d"))
+            danmaku_list.append((time_stamp, message, content, "0", "d"))
 
 
         elif elem.tag == 's' and elem.get('type') == 'gift':
@@ -337,6 +309,9 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
             base_timestamp = float(pending_gifts[0].get('timestamp', '0'))
         _flush_gifts(pending_gifts, base_timestamp, danmaku_list)
     
+    # 计算礼物收益
+    earnings = sum(int(item[3]) for item in danmaku_list)
+
     # 过滤和均匀分布弹幕
     filtered_danmaku = filter_danmaku(
         danmaku_list,
@@ -430,7 +405,8 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     minutes = int((total_time % 3600) // 60)
     seconds = int(total_time % 60)
     
-    logger.info(f"弹幕发送完成，总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}")
+    logger.info(f"弹幕发送完成，总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}，主播挣了：{earnings}")
+    return earnings
 
 def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) -> str:
     """

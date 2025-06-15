@@ -1,8 +1,9 @@
 from typing import Dict
 import time
 from logger import logger, clear_log
+from src.config import config
 from storage import Storage
-from api import get_video_parts, auto_send_danmaku, check_up_latest_video
+from api import get_video_parts, auto_send_danmaku, check_up_latest_video, send_danmaku
 import os
 
 class VideoMonitor:
@@ -37,14 +38,15 @@ class VideoMonitor:
                 logger.info(f"视频已发布: {video['title_keyword']} - {bvid}")
                 # 获取视频分P信息并发送弹幕
                 parts = get_video_parts(bvid)
-                
-                for cid, part, duration in parts:
+
+                total_earnings = 0
+                for index, (cid, part, duration) in enumerate(parts):
                     xml_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'danmaku', f"{part}.xml")
                     if not os.path.exists(xml_file):
                         logger.warning(f"XML文件不存在: {xml_file}")
                         continue
-                        
-                    auto_send_danmaku(
+
+                    total_earnings += auto_send_danmaku(
                         xml_path=xml_file,
                         video_cid=cid,
                         video_duration=duration,
@@ -53,7 +55,13 @@ class VideoMonitor:
                     # 发送完成后删除XML文件
                     os.remove(xml_file)
                     logger.info(f"已删除XML文件: {xml_file}")
-                    
+                    if index == len(parts)-1:
+                        acc = config.bilibili['accounts'][0]
+                        success, message, _ = send_danmaku(cid, f'Earned {total_earnings}', bvid, 0, 16646914,acc['csrf'], acc['sessdata'])
+                        if not success:
+                            logger.warning(f"发送主播收益失败, 消息: {message}")
+
+
                 # 记录已处理的视频
                 processed_videos.append(video)
                 logger.info(f"视频 {video['title_keyword']} 处理完成")
