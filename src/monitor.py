@@ -1,7 +1,7 @@
 from typing import Dict
 import time
 from logger import logger, clear_log
-from src.config import config
+from config import config
 from storage import Storage
 from api import get_video_parts, auto_send_danmaku, check_up_latest_video, send_danmaku
 import os
