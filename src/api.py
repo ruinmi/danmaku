@@ -1,3 +1,5 @@
+import re
+
 import requests
 import time
 import hashlib
@@ -5,6 +7,7 @@ from typing import List, Tuple
 import xml.etree.ElementTree as ET
 from config import config
 from logger import logger
+import regex
 
 def get_wbi_sign(params: dict) -> tuple[str, str]:
     """生成 Wbi 签名"""
@@ -225,7 +228,7 @@ def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, 
         time_stamp = abs_time - base_timestamp
     else:
         return None
-    uname = elem.get('username', '')
+    uname = elem.get('username', elem.get('user', ''))
     uid = elem.get('uid', '')
     giftname = elem.get('giftname', '')
     num = elem.get('num', '')
@@ -259,7 +262,7 @@ def _parse_gift(elem: ET.Element, base_timestamp: float | None) -> tuple[float, 
         time_stamp = abs_time - base_timestamp
     else:
         return None
-    uname = elem.get('username', '')
+    uname = elem.get('username', elem.get('user', ''))
     uid = elem.get('uid', '')
     giftname = elem.get('giftname', '')
     num = elem.get('num', '')
@@ -376,7 +379,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
             success, message, result = send_danmaku(
                 oid=video_cid,
                 bvid=bvid,
-                message=content,
+                message=clean_text(content),
                 progress=progress,
                 color=color,
                 csrf=current_account['csrf'],
@@ -477,3 +480,7 @@ def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) ->
     except Exception as e:
         print(f"请求发生错误: {str(e)}")
         return ""
+    
+    
+def clean_text(text):
+    return ''.join(c for c in text if regex.match(r'[\p{Han}\p{Latin}0-9\s.,!?;:\'"\-()（）\[\]{}…—·~`@#&*+=<>%$^|\\/]', c))
