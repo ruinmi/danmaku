@@ -457,4 +457,4 @@ def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) ->
     
     
 def clean_text(text):
-    return ''.join(c for c in text if regex.match(r'[\p{Han}\p{Latin}0-9\s.,!?;:\'"\-()（）\[\]{}…—·~`@#&*+=<>%$^|\\/]', c))
+    return ''.join(c for c in text if regex.match(r'[\p{Han}\p{Latin}0-9\s.,!?？。，！；（）：‘’【】、;:\'"\-()（）\[\]{}…—·~`@#&*+=<>%$^|\\/]', c))

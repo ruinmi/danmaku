@@ -54,7 +54,7 @@ class VideoMonitor:
                     )
                     # 发送完成后删除XML文件
                     os.remove(xml_file)
-                    logger.info(f"已删除XML文件: {xml_file}")
+                    logger.info(f"已删除XML文件: {xml_file}")    
                     if index == len(parts)-1:
                         acc = config.bilibili['accounts'][0]
                         success, message, _ = send_danmaku(cid, f'Earned {total_earnings}', bvid, 0, 16646914,acc['csrf'], acc['sessdata'])
