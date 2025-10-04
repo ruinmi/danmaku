@@ -6,6 +6,19 @@ import xml.etree.ElementTree as ET
 from config import config
 from logger import logger
 import regex
+import urllib.parse
+
+appkey = '1d8b6e7d45233436'
+appsec = '560c52ccd288fed045859ed18bffd973'
+
+def appsign(params, appkey, appsec):
+    '为请求参数进行 APP 签名'
+    params.update({'appkey': appkey})
+    params = dict(sorted(params.items())) # 按照 key 重排参数
+    query = urllib.parse.urlencode(params) # 序列化参数
+    sign = hashlib.md5((query+appsec).encode()).hexdigest() # 计算 api 签名
+    params.update({'sign':sign})
+    return params
 
 def get_wbi_sign(params: dict) -> tuple[str, str]:
     """生成 Wbi 签名"""
@@ -420,17 +433,23 @@ def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) ->
     返回:
         str: 符合条件的视频bvid，如果没找到返回空字符串
     """
-    url = f"https://app.bilibili.com/x/v2/space/archive/cursor?vmid={mid}&order=pubdate"
-
+    params = {
+        'vmid': mid,
+        'order': 'pubdate',
+        'ts': int(time.time())
+    }
     headers = {
         'User-Agent': config.bilibili['user_agent']
     }
-    
+    signed_params = appsign(params, appkey, appsec)
+    query = urllib.parse.urlencode(signed_params)
+    url = f"https://app.bilibili.com/x/v2/space/archive/cursor?{query}"
+
     try:
         response = requests.get(url, headers=headers, timeout=10)
         result = response.json()
         if result["code"] != 0:
-            print(f"请求失败: {result['message']}")
+            logger.exception(f"请求失败: {result['message']}")
             return ""
         
         # 获取视频列表
@@ -452,7 +471,7 @@ def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) ->
         return closest_video["bvid"] if closest_video else ""
         
     except Exception as e:
-        print(f"请求发生错误: {str(e)}")
+        logger.exception(f"请求发生错误")
         return ""
     
     
