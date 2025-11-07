@@ -2,6 +2,7 @@ from typing import Dict
 import time
 from logger import logger, clear_log
 from config import config
+from login import get_user_info
 from storage import Storage
 from api import get_video_parts, auto_send_danmaku, check_up_latest_video, send_danmaku
 import os
@@ -57,7 +58,7 @@ class VideoMonitor:
                     logger.info(f"已删除XML文件: {xml_file}")    
                     if index == len(parts)-1:
                         acc = config.bilibili['accounts'][0]
-                        success, message, _ = send_danmaku(cid, f'Earned {total_earnings}', bvid, 0, 16646914,acc['csrf'], acc['sessdata'])
+                        success, message, _ = send_danmaku(cid, f'Earned {total_earnings}', bvid, 0, 16646914, acc['csrf'], acc['sessdata'])
                         if not success:
                             logger.warning(f"发送主播收益失败, 消息: {message}")
 
@@ -82,11 +83,26 @@ class VideoMonitor:
             # 保存更新后的列表
             self.storage.save(current_pending_list)
     
+    @staticmethod
+    def check_accounts():
+        for acc in config.bilibili['accounts']:
+            if 'mid' not in acc or not acc['mid'] or 'uname' not in acc or not acc['uname']:
+                sessdata = acc['sessdata']
+                success, user_info = get_user_info(sessdata)
+                if success:
+                    acc['mid'] = user_info['mid']
+                    acc['uname'] = user_info['uname']
+                    acc['level'] = user_info['level']
+                    logger.info(f"更新账号信息: {acc['uname']}")
+        config.save()
+            
+    
     def monitor(self):
         logger.info("开始监控")
         while True:
             try:
                 clear_log(logger)
+                self.check_accounts()
                 self.check_pending_videos()
                 time.sleep(self.config['interval'])
             except KeyboardInterrupt:

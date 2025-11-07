@@ -7,6 +7,7 @@ from Crypto.Hash import SHA256
 import binascii
 from logger import logger
 from config import config
+from login import get_user_info
 
 
 class CookieRefresher:
@@ -91,10 +92,15 @@ JNrRuoEUXpabUzGB8QIDAQAB
             if result['code'] == 0:
                 # 从响应头中获取新的Cookie
                 cookies = response.cookies
+                sessdata = cookies.get('SESSDATA', account['sessdata'])
+                success, user_info = get_user_info(sessdata)
                 new_account = {
                     'csrf': cookies.get('bili_jct', account['csrf']),
-                    'sessdata': cookies.get('SESSDATA', account['sessdata']),
-                    'refresh_token': result['data']['refresh_token']
+                    'sessdata': sessdata,
+                    'refresh_token': result['data']['refresh_token'],
+                    "mid": user_info['mid'] if success else account.get('mid', ''),
+                    "uname": user_info['uname'] if success else account.get('uname', ''),
+                    "level": user_info['level'] if success else account.get('level', 0),
                 }
 
                 # 确认更新
