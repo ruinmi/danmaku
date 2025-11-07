@@ -151,7 +151,8 @@ def add_account():
             "refresh_token": cookies.get('refresh_token', ''),
             "mid": user_info['mid'],
             "uname": user_info['uname'],
-            "level": user_info['level']
+            "level": user_info['level'],
+            "expired": False
         }
 
         # 确保accounts列表存在

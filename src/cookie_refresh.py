@@ -58,8 +58,8 @@ JNrRuoEUXpabUzGB8QIDAQAB
             match = re.search(r'<div id="1-name">([^<]+)</div>', response.text)
             if match:
                 return match.group(1)
-        except Exception as e:
-            logger.error(f"获取refresh_csrf失败: {str(e)}")
+        except Exception:
+            logger.exception("获取refresh_csrf报错")
         return ""
 
     def refresh_cookie(self, account: dict) -> dict:
@@ -67,10 +67,11 @@ JNrRuoEUXpabUzGB8QIDAQAB
         if not self.check_need_refresh(account):
             return account
 
-        logger.info(f"账号 {account['csrf'][:8]} 的Cookie需要刷新")
+        logger.info(f"账号 {account['uname']} 的Cookie需要刷新")
         refresh_csrf = self.get_refresh_csrf(account)
         if not refresh_csrf:
             logger.error(f"获取refresh_csrf失败，无法刷新Cookie")
+            account['expired'] = True
             return account
 
         logger.info(f"获取到refresh_csrf: {refresh_csrf}")
@@ -101,6 +102,7 @@ JNrRuoEUXpabUzGB8QIDAQAB
                     "mid": user_info['mid'] if success else account.get('mid', ''),
                     "uname": user_info['uname'] if success else account.get('uname', ''),
                     "level": user_info['level'] if success else account.get('level', 0),
+                    'expired': False
                 }
 
                 # 确认更新
@@ -109,6 +111,7 @@ JNrRuoEUXpabUzGB8QIDAQAB
                 return new_account
 
         except Exception as e:
+            account['expired'] = True
             logger.error(f"刷新Cookie失败: {str(e)}")
 
         return account
@@ -135,23 +138,14 @@ def refresh_all_cookies():
     """刷新所有账号的Cookie"""
     refresher = CookieRefresher()
     new_accounts = []
-    config_changed = False
 
     for account in config.bilibili['accounts']:
-        logger.info(f"正在检查账号 {account['csrf'][:8]}... 的Cookie状态")
+        logger.info(f"正在检查账号 {account['uname']} 的Cookie状态")
         new_account = refresher.refresh_cookie(account)
         new_accounts.append(new_account)
 
-        # 检查是否有更新
-        if (new_account['csrf'] != account['csrf'] or
-                new_account['sessdata'] != account['sessdata'] or
-                new_account['refresh_token'] != account['refresh_token']):
-            config_changed = True
-
-    # 如果有更新，保存到配置文件
-    if config_changed:
-        config.bilibili['accounts'] = new_accounts
-        config.save()
-        logger.info("已更新配置文件中的Cookie信息")
+    config.bilibili['accounts'] = new_accounts
+    config.save()
+    logger.info("已更新配置文件中的Cookie信息")
 
     return new_accounts

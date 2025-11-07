@@ -58,7 +58,7 @@ class VideoMonitor:
                     logger.info(f"已删除XML文件: {xml_file}")    
                     if index == len(parts)-1:
                         acc = config.bilibili['accounts'][0]
-                        success, message, _ = send_danmaku(cid, f'Earned {total_earnings}', bvid, 0, 16646914, acc['csrf'], acc['sessdata'])
+                        success, message, _ = send_danmaku(cid, f'Earned {total_earnings}', bvid, 0, 16646914, acc)
                         if not success:
                             logger.warning(f"发送主播收益失败, 消息: {message}")
 

@@ -50,8 +50,11 @@ def get_video_parts(bvid: str) -> List[Tuple[int, str, int]]:
         raise Exception(f"获取视频分P失败: {result['message']}")
     return [(item["cid"], item["part"], item['duration']) for item in result["data"]]
 
-def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, csrf: str, sessdata: str) -> tuple[bool, str, dict]:
+def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, acc: dict) -> tuple[bool, str, dict]:
     """发送弹幕"""
+    if acc.get('expired', False):
+        return False, "账号Cookie已过期", {}
+    
     base_url = "https://api.bilibili.com/x/v2/dm/post"
     
     params = {
@@ -63,7 +66,7 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, c
         "color": color,
         "mode": 1,
         "rnd": int(time.time() * 1000000),
-        "csrf": csrf
+        "csrf": acc['csrf']
     }
     
     w_rid, wts = get_wbi_sign(params)
@@ -71,7 +74,7 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, c
     
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": f"SESSDATA={sessdata}; bili_jct={csrf}",
+        "Cookie": f"SESSDATA={acc['sessdata']}; bili_jct={acc['csrf']}",
         'User-Agent': config.bilibili['user_agent']
     }
     
@@ -88,18 +91,20 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, c
             
             try:
                 new_accounts = refresh_all_cookies()
-            except Exception as e:
-                logger.error(f"刷新Cookie失败: {e}")
+            except Exception:
+                logger.exception("刷新Cookie报错")
                 return False, "Cookie刷新失败", {}
 
             
             # 如果刷新成功，使用新的cookie重试
             if new_accounts:
                 for account in new_accounts:
-                    if account['csrf'] == csrf:
+                    if account['uname'] == acc['uname']:
+                        acc['expired'] = account.get('expired', False)
+                        if acc['expired']:
+                            return False, f"账号{acc['uname']}刷新后Cookie仍然过期", {}
                         logger.info("使用新的Cookie重试发送弹幕")
-                        return send_danmaku(oid, message, bvid, progress, color,
-                                         account['csrf'], account['sessdata'])
+                        return send_danmaku(oid, message, bvid, progress, color, account)
         
         return success, message, result
     except Exception as e:
@@ -336,7 +341,8 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     
     # 发送弹幕
     rate_limit_wait = config.danmaku['send_interval']  # 初始等待时间
-    accounts = config.bilibili['accounts']
+    # 过滤expired的账号
+    accounts = [acc for acc in config.bilibili['accounts'] if not acc.get('expired', False)]
     batch_size = config.bilibili['batch_size']  # 每批账号数量
     success_streak = 0  # 连续成功的批次数
     danmaku_count = 0
@@ -368,8 +374,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
                 message=clean_text(content),
                 progress=progress,
                 color=color,
-                csrf=current_account['csrf'],
-                sessdata=current_account['sessdata']
+                acc=current_account
             )
             
 
