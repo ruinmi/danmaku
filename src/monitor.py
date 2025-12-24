@@ -27,7 +27,7 @@ class VideoMonitor:
         for video in pending_list[:]:  # 使用切片创建副本以便修改
             try:
                 # 检查视频是否已发布
-                bvid = check_up_latest_video(
+                bvid, is_self_view = check_up_latest_video(
                     mid=self.config['mid'],
                     title_keyword=video['title_keyword'],
                     after_timestamp=video['after_timestamp']
@@ -38,7 +38,7 @@ class VideoMonitor:
                     
                 logger.info(f"视频已发布: {video['title_keyword']} - {bvid}")
                 # 获取视频分P信息并发送弹幕
-                parts = get_video_parts(bvid)
+                parts = get_video_parts(self.config['mid'], bvid)
 
                 total_earnings = 0
                 for index, (cid, part, duration) in enumerate(parts):
@@ -51,7 +51,8 @@ class VideoMonitor:
                         xml_path=xml_file,
                         video_cid=cid,
                         video_duration=duration,
-                        bvid=bvid
+                        bvid=bvid,
+                        is_self_view=is_self_view
                     )
                     # 发送完成后删除XML文件
                     os.remove(xml_file)

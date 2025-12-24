@@ -1,3 +1,8 @@
+import json
+import math
+import random
+from functools import reduce
+from hashlib import md5
 import requests
 import time
 import hashlib
@@ -10,6 +15,12 @@ import urllib.parse
 
 appkey = '1d8b6e7d45233436'
 appsec = '560c52ccd288fed045859ed18bffd973'
+mixinKeyEncTab = [
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
+    33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
+    61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
+    36, 20, 34, 44, 52
+]
 
 def appsign(params, appkey, appsec):
     '为请求参数进行 APP 签名'
@@ -22,12 +33,6 @@ def appsign(params, appkey, appsec):
 
 def get_wbi_sign(params: dict) -> tuple[str, str]:
     """生成 Wbi 签名"""
-    mixinKeyEncTab = [
-        46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
-        33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
-        61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
-        36, 20, 34, 44, 52
-    ]
     
     wts = str(int(time.time()))
     params_str = '&'.join([f'{k}={v}' for k, v in sorted(params.items())]) + f'&wts={wts}'
@@ -38,7 +43,59 @@ def get_wbi_sign(params: dict) -> tuple[str, str]:
     
     return w_rid, wts
 
-def get_video_parts(bvid: str) -> List[Tuple[int, str, int]]:
+def gen_dm_args(params: dict):
+    """reference: https://github.com/SocialSisterYi/bilibili-API-collect/issues/868"""
+    dm_rand = "ABCDEFGHIJK"
+    dm_img_list = "[]"
+    dm_img_str = "".join(random.sample(dm_rand, 2))
+    dm_cover_img_str = "".join(random.sample(dm_rand, 2))
+    dm_img_inter = '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}'
+
+    params.update(
+        {
+            "dm_img_list": dm_img_list,
+            "dm_img_str": dm_img_str,
+            "dm_cover_img_str": dm_cover_img_str,
+            "dm_img_inter": dm_img_inter,
+        }
+    )
+
+    return params
+
+def get_mixin_key(orig: str):
+    return reduce(lambda s, i: s + orig[i], mixinKeyEncTab, "")[:32]
+
+def enc_wbi(params: dict, img_key: str, sub_key: str):
+    mixin_key = get_mixin_key(img_key + sub_key)
+    curr_time = round(time.time())
+    params["wts"] = curr_time  # 添加 wts 字段
+    params = dict(sorted(params.items()))  # 按照 key 重排参数
+    # 过滤 value 中的 "!'()*" 字符
+    params = {
+        k: "".join(filter(lambda chr: chr not in "!'()*", str(v)))
+        for k, v in params.items()
+    }
+    query = urllib.parse.urlencode(params)  # 序列化参数
+    wbi_sign = md5((query + mixin_key).encode()).hexdigest()  # 计算 w_rid
+    params["w_rid"] = wbi_sign
+    return params
+
+
+def get_wbi_keys(headers: dict) -> tuple[str, str]:
+    resp = requests.get("https://api.bilibili.com/x/web-interface/nav", headers=headers)
+    resp.raise_for_status()
+    json_content = resp.json()
+    img_url: str = json_content["data"]["wbi_img"]["img_url"]
+    sub_url: str = json_content["data"]["wbi_img"]["sub_url"]
+    img_key = img_url.rsplit("/", 1)[1].split(".")[0]
+    sub_key = sub_url.rsplit("/", 1)[1].split(".")[0]
+    return img_key, sub_key
+
+def get_signed_params(params: dict, headers: dict):
+    img_key, sub_key = get_wbi_keys(headers)
+    return enc_wbi(params, img_key, sub_key)
+
+def get_video_parts_old(bvid: str) -> List[Tuple[int, str, int]]:
     """获取视频分P信息"""
     url = f"https://api.bilibili.com/x/player/pagelist?bvid={bvid}"
     headers = {
@@ -49,6 +106,21 @@ def get_video_parts(bvid: str) -> List[Tuple[int, str, int]]:
     if result["code"] != 0:
         raise Exception(f"获取视频分P失败: {result['message']}")
     return [(item["cid"], item["part"], item['duration']) for item in result["data"]]
+
+def get_video_parts(mid: int, bvid: str) -> List[Tuple[int, str, int]]:
+    """获取视频分P信息"""
+    url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
+    account = next((acc for acc in config.bilibili['accounts'] if acc.get('mid') == mid), None)
+    headers = {
+        "Cookie": f"SESSDATA={account['sessdata']}; bili_jct={account['csrf']}",
+        'User-Agent': config.bilibili['user_agent'],
+        "Content-Type": "application/json;charset=UTF-8",
+    }
+    response = requests.get(url, headers=headers, timeout=10)
+    result = response.json()
+    if result["code"] != 0:
+        raise Exception(f"获取视频分P失败: {result['message']}")
+    return [(item["cid"], item["part"], item['duration']) for item in result["data"]["pages"]]
 
 def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, acc: dict) -> tuple[bool, str, dict]:
     """发送弹幕"""
@@ -270,7 +342,7 @@ def _flush_gifts(
     pending_gifts.clear()
 
 
-def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: str):
+def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: str, is_self_view: bool):
     """根据XML文件内容自动发送弹幕
 
     XML中 ``<d>`` 标签表示普通弹幕，``<s type="gift">`` 表示礼物弹幕。
@@ -344,6 +416,9 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     # 过滤expired的账号
     accounts = [acc for acc in config.bilibili['accounts'] if not acc.get('expired', False)]
     batch_size = config.bilibili['batch_size']  # 每批账号数量
+    if is_self_view:
+        accounts = [next((acc for acc in config.bilibili['accounts'] if acc.get('mid') == config.monitor['mid']), None)]
+        batch_size = 1
     success_streak = 0  # 连续成功的批次数
     danmaku_count = 0
     
@@ -426,7 +501,7 @@ def auto_send_danmaku(xml_path: str, video_cid: int, video_duration: int, bvid: 
     logger.info(f"弹幕发送完成，总耗时: {hours:02d}:{minutes:02d}:{seconds:02d}，主播挣了：{earnings}")
     return earnings
 
-def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) -> str:
+def check_up_latest_video_old(mid: int, title_keyword: str, after_timestamp: int) -> str:
     """
     检查UP主最新视频
     
@@ -479,6 +554,64 @@ def check_up_latest_video(mid: str, title_keyword: str, after_timestamp: int) ->
         logger.exception(f"请求发生错误")
         return ""
     
+def check_up_latest_video(mid: int, title_keyword: str, after_timestamp: int) -> (str, bool):
+    params = {
+        "mid": mid,
+        "ps": 10,
+        "pn": 1,
+        "order": "pubdate",
+        'keyword': title_keyword,
+    }
+    account = next((acc for acc in config.bilibili['accounts'] if acc.get('mid') == mid), None)
+    if not account:
+        logger.warning('由于没有被监听up的cookie，无法监听私有视频！')
+        return check_up_latest_video_old(mid, title_keyword, after_timestamp), False
     
+    headers = {
+        "Cookie": f"SESSDATA={account['sessdata']}; bili_jct={account['csrf']}",
+        'User-Agent': config.bilibili['user_agent'],
+        "Content-Type": "application/json;charset=UTF-8",
+    }
+
+    params = gen_dm_args(params)
+    params = get_signed_params(params, headers)
+
+    url = f"https://api.bilibili.com/x/space/wbi/arc/search"
+
+    try:
+
+        response = requests.get(url, params=params, headers=headers)
+        result = response.json()
+        if result["code"] != 0:
+            logger.exception(f"请求失败: {result['message']}")
+            return ""
+
+        # 获取视频列表
+        vlist = result["data"]["list"]["vlist"]
+        closest_video = None
+        min_time_diff = float('inf')
+
+        # 遍历视频列表找出时间最接近的视频
+        for video in vlist:
+            # 只考虑发布时间晚于after_timestamp的视频
+            if video["created"] <= after_timestamp:
+                continue
+
+            time_diff = video["created"] - after_timestamp
+            if time_diff < min_time_diff and title_keyword.lower() in video["title"].lower():
+                min_time_diff = time_diff
+                closest_video = video
+
+        return closest_video["bvid"], closest_video.get("is_self_view", False) if closest_video else ""
+
+    except Exception as e:
+        logger.exception(f"请求发生错误")
+        return ""
+
 def clean_text(text):
     return ''.join(c for c in text if regex.match(r'[\p{Han}\p{Latin}0-9\s.,!?？。，！；（）：‘’【】、;:\'"\-()（）\[\]{}…—·~`@#&*+=<>%$^|\\/]', c))
+
+# if __name__ == '__main__':
+#     bvid, is_self_view = check_up_latest_video(2054591624, '张嘉文', 176648470)
+#     parts = get_video_parts(2054591624, bvid)
+#     print(parts)

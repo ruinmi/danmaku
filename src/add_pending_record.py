@@ -48,7 +48,7 @@ def main():
     # 从标准输入读取JSON数据
     data = json.load(sys.stdin)
     
-    room_title = data.get('room_title', '').strip()
+    room_title = data.get('title', '').strip()
     after_timestamp = data.get('end_time', 0)
     
     # 检查room_title是否为空
