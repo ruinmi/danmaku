@@ -13,6 +13,8 @@ from logger import logger
 import regex
 import urllib.parse
 
+from cookie_refresh import refresh_all_cookies
+
 appkey = '1d8b6e7d45233436'
 appsec = '560c52ccd288fed045859ed18bffd973'
 mixinKeyEncTab = [
@@ -65,20 +67,41 @@ def gen_dm_args(params: dict):
 def get_mixin_key(orig: str):
     return reduce(lambda s, i: s + orig[i], mixinKeyEncTab, "")[:32]
 
+def _wbi_urlencode(params: dict) -> str:
+    # 关键：用 quote 而不是默认的 quote_plus，这样空格是 %20 不是 +
+    # safe="~" 是很多 WBI 实现的常见做法（尽量少编码 ~）
+    return urllib.parse.urlencode(params, quote_via=urllib.parse.quote, safe="~")
+
 def enc_wbi(params: dict, img_key: str, sub_key: str):
     mixin_key = get_mixin_key(img_key + sub_key)
-    curr_time = round(time.time())
-    params["wts"] = curr_time  # 添加 wts 字段
-    params = dict(sorted(params.items()))  # 按照 key 重排参数
-    # 过滤 value 中的 "!'()*" 字符
+    params = dict(params)  # 避免改动外部传入对象
+
+    # 1) wts
+    params["wts"] = round(time.time())
+    params = dict(sorted(params.items()))
+
+    # 3) 过滤 value 中的 "!'()*"
     params = {
-        k: "".join(filter(lambda chr: chr not in "!'()*", str(v)))
+        k: "".join(ch for ch in str(v) if ch not in "!'()*")
         for k, v in params.items()
     }
-    query = urllib.parse.urlencode(params)  # 序列化参数
-    wbi_sign = md5((query + mixin_key).encode()).hexdigest()  # 计算 w_rid
-    params["w_rid"] = wbi_sign
-    return params
+
+    # 4) 生成用于签名的 query（注意：urlencode 默认空格 -> +）
+    query = _wbi_urlencode(params)
+
+    # 5) md5 生成 w_rid
+    w_rid = md5((query + mixin_key).encode("utf-8")).hexdigest()
+
+    # 6) 把 w_rid 加回去，并生成最终 query
+    params["w_rid"] = w_rid
+    final_query = urllib.parse.urlencode(params)
+    return final_query, params
+
+def build_wbi_url(base_url: str, params: dict, headers: dict) -> tuple[str, dict]:
+    img_key, sub_key = get_wbi_keys(headers)
+    final_query, signed_params = enc_wbi(params, img_key, sub_key)
+    full_url = f"{base_url}?{final_query}"
+    return full_url, signed_params
 
 
 def get_wbi_keys(headers: dict) -> tuple[str, str]:
@@ -159,8 +182,6 @@ def send_danmaku(oid: int, message: str, bvid: str, progress: int, color: int, a
         # 当遇到登录失效或csrf校验失败时，尝试刷新cookie
         if result["code"] in [-101, -111]:
             logger.warning(f"Cookie失效，尝试刷新: {message}")
-            from cookie_refresh import refresh_all_cookies
-            
             try:
                 new_accounts = refresh_all_cookies()
             except Exception:
@@ -574,20 +595,23 @@ def check_up_latest_video(mid: int, title_keyword: str, after_timestamp: int) ->
     }
 
     params = gen_dm_args(params)
-    params = get_signed_params(params, headers)
-
-    url = f"https://api.bilibili.com/x/space/wbi/arc/search"
+    
+    base_url = f"https://api.bilibili.com/x/space/wbi/arc/search"
 
     try:
+        full_url, signed_params = build_wbi_url(base_url, params, headers)
+        logger.info("full_url=%s", full_url)
 
-        response = requests.get(url, params=params, headers=headers)
+        response = requests.get(full_url, headers=headers)
         result = response.json()
+        
         if result["code"] != 0:
-            logger.exception(f"请求失败: {result['message']}")
-            return ""
+            logger.error("请求失败: code=%s message=%s url=%s", result.get("code"), result.get("message"), full_url)
+            refresh_all_cookies()
+            return "", False
 
         # 获取视频列表
-        vlist = result["data"]["list"]["vlist"]
+        vlist = (((result.get("data") or {}).get("list") or {}).get("vlist")) or []
         closest_video = None
         min_time_diff = float('inf')
 
@@ -601,17 +625,17 @@ def check_up_latest_video(mid: int, title_keyword: str, after_timestamp: int) ->
             if time_diff < min_time_diff and title_keyword.lower() in video["title"].lower():
                 min_time_diff = time_diff
                 closest_video = video
-
-        return closest_video["bvid"], closest_video.get("is_self_view", False) if closest_video else ""
-
+        if closest_video:
+            return closest_video.get("bvid", ""), closest_video.get("is_self_view", False)
+        return "", False
     except Exception as e:
         logger.exception(f"请求发生错误")
-        return ""
+        return "", False
 
 def clean_text(text):
     return ''.join(c for c in text if regex.match(r'[\p{Han}\p{Latin}0-9\s.,!?？。，！；（）：‘’【】、;:\'"\-()（）\[\]{}…—·~`@#&*+=<>%$^|\\/]', c))
 
-# if __name__ == '__main__':
-#     bvid, is_self_view = check_up_latest_video(2054591624, '张嘉文', 176648470)
-#     parts = get_video_parts(2054591624, bvid)
-#     print(parts)
+if __name__ == '__main__':
+    bvid, is_self_view = check_up_latest_video(2054591624, '冠军打野 一打五', 1767295829)
+    # parts = get_video_parts(2054591624, bvid)
+    # print(parts)
